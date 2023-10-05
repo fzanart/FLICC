@@ -108,8 +108,9 @@ class Engine:
 
         return eval_batch_loss, y_true, y_pred
     
-    def train(self, training_loader, validation_loader, focalloss):
+    def train(self, training_loader, validation_loader, focalloss, early_stop):
         best_score = 0.0
+        no_improvement_count = 0  # Initialize a counter for early stopping
         for epoch in range(self.epochs):
             train_batch_loss, eval_batch_loss = 0.0, 0.0
             train_batch_loss = self.train_one_epoch(training_loader, focalloss)
@@ -125,7 +126,14 @@ class Engine:
             if self.train_metrics[epoch + 1]['F1'] > best_score:
                 best_score = self.train_metrics[epoch + 1]['F1']
                 self.best_model_state = copy.deepcopy(self.model.state_dict())
-            
+                no_improvement_count = 0  # Reset the no improvement count
+            else:
+                no_improvement_count += 1  # Increment the no improvement count
+            # Check for early stopping
+            if no_improvement_count >= early_stop:
+                print(f"No improvement for {no_improvement_count} epochs. Stopping early.")
+                break
+
             print(f"{epoch + 1} / {self.epochs}:", '\t'.join(f'{k}:\t{v:.4f}' for k, v in self.train_metrics[epoch + 1].items() if k not in ['True_labels', 'Pred_labels']))
 
     def create_report(self, y_true, y_pred):
@@ -159,19 +167,28 @@ class Engine:
     def run(self, **kwargs):
 
         focalloss = False
+        early_stop = self.epochs
+
         if 'focalloss' in kwargs:
             self.calculate_class_weights() #TODO: <- check this bit!
             self.setup_focal_loss(kwargs['gama'])
             focalloss = True
+        
+        if 'early_stop' in kwargs:
+            early_stop = kwargs['early_stop']
 
-        else:
-            self.setup_optimizer(lr=kwargs['lr'], wd=kwargs['wd'])
-            self.train(training_loader=kwargs['train_dataloader'], validation_loader=kwargs['eval_dataloader'], focalloss=focalloss)
-            _, y_true, y_pred = self.evaluate(dataloader=kwargs['eval_dataloader'])
-            print('best (higgest macro f1-score) val results:')
-            print(classification_report(y_true=y_true, y_pred=y_pred, target_names=self.labels, zero_division=0.0))
-            _, y_true, y_pred = self.evaluate(dataloader=kwargs['test_dataloader'])
-            print('test results:')
-            print(classification_report(y_true=y_true, y_pred=y_pred, target_names=self.labels, zero_division=0.0))
-            self.create_report(y_true, y_pred)
-            return accuracy_score(y_true, y_pred), f1_score(y_true, y_pred, average='macro')
+        self.setup_optimizer(lr=kwargs['lr'], wd=kwargs['wd'])
+
+        self.train(training_loader=kwargs['train_dataloader'],
+                    validation_loader=kwargs['eval_dataloader'],
+                    focalloss=focalloss,
+                    early_stop=early_stop)
+        
+        _, y_true, y_pred = self.evaluate(dataloader=kwargs['eval_dataloader'])
+        print('best (higgest macro f1-score) val results:')
+        print(classification_report(y_true=y_true, y_pred=y_pred, target_names=self.labels, zero_division=0.0))
+        _, y_true, y_pred = self.evaluate(dataloader=kwargs['test_dataloader'])
+        print('test results:')
+        print(classification_report(y_true=y_true, y_pred=y_pred, target_names=self.labels, zero_division=0.0))
+        self.create_report(y_true, y_pred)
+        return accuracy_score(y_true, y_pred), f1_score(y_true, y_pred, average='macro')

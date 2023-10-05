@@ -17,7 +17,8 @@ class ClassificationModel:
                 raise ValueError("When 'lora' is True, 'r', 'alpha', and 'dropout' must be provided.")
             self.setup_peft_model(r=r, alpha=alpha, dropout=dropout)
         
-        self.send_to_device()
+        if not quantized_model:
+            self.send_to_device()
     
     def setup_model(self):
         self.model = AutoModelForSequenceClassification.from_pretrained(self.model_checkpoint, num_labels=self.num_labels)
