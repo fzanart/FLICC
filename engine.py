@@ -129,12 +129,14 @@ class Engine:
                 no_improvement_count = 0  # Reset the no improvement count
             else:
                 no_improvement_count += 1  # Increment the no improvement count
+            
+            print(f"{epoch + 1} / {self.epochs}:", '\t'.join(f'{k}:\t{v:.4f}' for k, v in self.train_metrics[epoch + 1].items() if k not in ['True_labels', 'Pred_labels']))
+            
             # Check for early stopping
             if no_improvement_count >= early_stop:
                 print(f"No improvement for {no_improvement_count} epochs. Stopping early.")
                 break
 
-            print(f"{epoch + 1} / {self.epochs}:", '\t'.join(f'{k}:\t{v:.4f}' for k, v in self.train_metrics[epoch + 1].items() if k not in ['True_labels', 'Pred_labels']))
 
     def create_report(self, y_true, y_pred):
         with open(f'{self.output_dir}/report.txt', 'w') as report_file:
