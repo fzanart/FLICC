@@ -30,6 +30,7 @@ class Engine:
         self.labels = labels
         self.train_metrics = {}
         self.create_output_directory(output_dir)
+        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     def create_output_directory(self, output_dir):
         if os.path.exists(output_dir):
@@ -65,22 +66,26 @@ class Engine:
     def setup_optimizer(self, lr, wd):
         self.optimizer = AdamW(self.model.parameters(), lr=lr, weight_decay=wd)
     
-    def train_one_epoch(self, dataloader, focalloss):
+    def train_one_epoch(self, dataloader, focalloss, accumulation_steps):
         train_batch_loss = 0.0
         self.model.train()
         self.model.config.use_cache = False  # silence the warnings. Please re-enable for inference!
-        for batch in dataloader:
+        for idx, batch in enumerate(dataloader):
             batch = {k: v.to(self.device) for k, v in batch.items()}
             outputs = self.model(**batch)
             if focalloss:
                 loss = self.focal_loss(outputs.logits, batch['labels'])
             else:
                 loss = outputs.loss
-                
+
+            # normalise the gradients
+            loss = loss / accumulation_steps
             loss.backward()
             train_batch_loss += loss.item()
-            self.optimizer.step()
-            self.optimizer.zero_grad()
+            
+            if ((idx + 1) % accumulation_steps == 0) or (idx + 1 == len(dataloader)):
+                self.optimizer.step()
+                self.optimizer.zero_grad()
         
         return train_batch_loss
     
@@ -108,12 +113,12 @@ class Engine:
 
         return eval_batch_loss, y_true, y_pred
     
-    def train(self, training_loader, validation_loader, focalloss, early_stop):
+    def train(self, training_loader, validation_loader, focalloss, early_stop, accumulation_steps):
         best_score = 0.0
         no_improvement_count = 0  # Initialize a counter for early stopping
         for epoch in range(self.epochs):
             train_batch_loss, eval_batch_loss = 0.0, 0.0
-            train_batch_loss = self.train_one_epoch(training_loader, focalloss)
+            train_batch_loss = self.train_one_epoch(training_loader, focalloss, accumulation_steps)
             eval_batch_loss, y_true, y_pred = self.evaluate(validation_loader)
 
             self.train_metrics[epoch + 1] = {'Train Loss':train_batch_loss / len(training_loader),
@@ -170,21 +175,26 @@ class Engine:
 
         focalloss = False
         early_stop = self.epochs
+        accumulation_steps = 1
 
         if 'focalloss' in kwargs:
             self.calculate_class_weights() #TODO: <- check this bit!
-            self.setup_focal_loss(kwargs['gama'])
+            self.setup_focal_loss(kwargs['gamma'])
             focalloss = True
         
         if 'early_stop' in kwargs:
             early_stop = kwargs['early_stop']
+
+        if 'accumulation_steps' in kwargs:
+            accumulation_steps = kwargs['accumulation_steps']
 
         self.setup_optimizer(lr=kwargs['lr'], wd=kwargs['wd'])
 
         self.train(training_loader=kwargs['train_dataloader'],
                     validation_loader=kwargs['eval_dataloader'],
                     focalloss=focalloss,
-                    early_stop=early_stop)
+                    early_stop=early_stop,
+                    accumulation_steps=accumulation_steps)
         
         _, y_true, y_pred = self.evaluate(dataloader=kwargs['eval_dataloader'])
         print('best (higgest macro f1-score) val results:')
