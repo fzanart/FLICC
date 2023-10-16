@@ -41,9 +41,9 @@ class ClimateDataset:
         self.load_dataset(MODEL_TO_TRAIN[model_to_train]['filter_labels'])
 
     def load_dataset(self, filter_labels):
-        self.train_dataset = load_dataset('csv', data_files='Data/fallacy_train.csv', split='train') #self.dataset_url+
-        self.test_dataset = load_dataset('csv', data_files='Data/fallacy_test.csv', split='train') #self.dataset_url+
-        self.val_dataset = load_dataset('csv', data_files='Data/fallacy_val.csv', split='train') #self.dataset_url+
+        self.train_dataset = load_dataset('csv', data_files=self.dataset_url+'Data/fallacy_train.csv', split='train')
+        self.test_dataset = load_dataset('csv', data_files=self.dataset_url+'Data/fallacy_test.csv', split='train')
+        self.val_dataset = load_dataset('csv', data_files=self.dataset_url+'Data/fallacy_val.csv', split='train')
         self.dataset = DatasetDict({'train': self.train_dataset,'test': self.test_dataset,'val': self.val_dataset})
         self.dataset = self.dataset.rename_column("label", "labels")
         if filter_labels:

@@ -8,6 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW, lr_scheduler
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2):
@@ -89,15 +91,18 @@ class Engine:
         
         return train_batch_loss
     
-    def evaluate(self, dataloader): #, eval_on_best_model=False
+    def evaluate(self, dataloader, eval_on_best_model=False, is_quantized=False):
         y_true = []
         y_pred = []
         eval_batch_loss = 0.0
-        # if eval_on_best_model:
+        
+        if eval_on_best_model and not is_quantized:
+            self.model.load_state_dict(self.best_model_state)
+            self.model.eval()
 
-        #     self.model.load_state_dict(self.best_model_state)
-        self.model.eval()
-        self.model.config.use_cache = True
+        else:  
+            self.model.eval()
+            self.model.config.use_cache = True
 
         with torch.no_grad():
             for batch in dataloader:
@@ -142,7 +147,6 @@ class Engine:
                 print(f"No improvement for {no_improvement_count} epochs. Stopping early.")
                 break
 
-
     def create_report(self, y_true, y_pred):
         with open(f'{self.output_dir}/report.txt', 'w') as report_file:
             # Write train and validation loss, validation accuracy, and F1
@@ -157,7 +161,7 @@ class Engine:
         self.plot_train_val_curves()
 
     def calculate_class_weights(self):
-        y_train = self.dataset_encoded['train']['labels'].cpu().numpy() #TODO: <- check this bit!
+        y_train = self.dataset_encoded['train']['labels'].cpu().numpy()
         class_counts = np.bincount(y_train)
         total_samples = len(y_train)
 
@@ -176,14 +180,18 @@ class Engine:
         focalloss = False
         early_stop = self.epochs
         accumulation_steps = 1
+        is_quantized = False
 
         if 'focalloss' in kwargs:
-            self.calculate_class_weights() #TODO: <- check this bit!
+            self.calculate_class_weights()
             self.setup_focal_loss(kwargs['gamma'])
             focalloss = True
         
         if 'early_stop' in kwargs:
             early_stop = kwargs['early_stop']
+
+        if 'is_quantized' in kwargs:
+            is_quantized = kwargs['is_quantized']
 
         if 'accumulation_steps' in kwargs:
             accumulation_steps = kwargs['accumulation_steps']
@@ -196,11 +204,38 @@ class Engine:
                     early_stop=early_stop,
                     accumulation_steps=accumulation_steps)
         
-        _, y_true, y_pred = self.evaluate(dataloader=kwargs['eval_dataloader'])
+        _, eval_y_true, eval_y_pred = self.evaluate(dataloader=kwargs['eval_dataloader'], eval_on_best_model=True, is_quantized=is_quantized)
         print('best (higgest macro f1-score) val results:')
-        print(classification_report(y_true=y_true, y_pred=y_pred, target_names=self.labels, zero_division=0.0))
-        _, y_true, y_pred = self.evaluate(dataloader=kwargs['test_dataloader'])
+        print(classification_report(y_true=eval_y_true, y_pred=eval_y_pred, target_names=self.labels, zero_division=0.0))
+        _, test_y_true, test_y_pred = self.evaluate(dataloader=kwargs['test_dataloader'], eval_on_best_model=True, is_quantized=is_quantized)
         print('test results:')
-        print(classification_report(y_true=y_true, y_pred=y_pred, target_names=self.labels, zero_division=0.0))
-        self.create_report(y_true, y_pred)
-        return accuracy_score(y_true, y_pred), f1_score(y_true, y_pred, average='macro')
+        print(classification_report(y_true=test_y_true, y_pred=test_y_pred, target_names=self.labels, zero_division=0.0))
+        self.create_report(test_y_true, test_y_pred)
+        return accuracy_score(test_y_true, test_y_pred), f1_score(test_y_true, test_y_pred, average='macro'), accuracy_score(eval_y_true, eval_y_pred), f1_score(eval_y_true, eval_y_pred, average='macro')
+    
+    @classmethod
+    def plot_grid_search(cls, df:dict, title:str, column:str, sci_format:bool):
+        # Create the plot
+        df = pd.DataFrame(df)
+        ax = df.plot(x=column, y=['test_acc', 'test_f1'], marker='o', linestyle='-')
+        # Set y-axis range between 0 and 1
+        plt.ylim(0, 1)
+        # Annotate points with F1 scores
+        for _, row in df.iterrows(): 
+            ax.annotate(f'{row["test_f1"]:.2f}', (row[column], row["test_f1"]), textcoords='offset points', xytext=(0, -10), ha='center')
+        # Annotate points with Acc scores
+        for _, row in df.iterrows():
+            ax.annotate(f'{row["test_acc"]:.2f}', (row[column], row["test_acc"]), textcoords='offset points', xytext=(0, 10), ha='center')
+
+        # x-format
+        if sci_format:
+            plt.xticks(df[column], [f'{val:.0e}' for val in df[column]], ha='center')
+            plt.xscale('log')
+        else:
+            plt.xticks(df[column], [val for val in df[column]], ha='center')
+
+        plt.minorticks_off()
+        plt.title(title)
+        plt.xlabel(column)
+        plt.ylabel('Score')
+        plt.show()
