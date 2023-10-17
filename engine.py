@@ -214,7 +214,7 @@ class Engine:
         return accuracy_score(test_y_true, test_y_pred), f1_score(test_y_true, test_y_pred, average='macro'), accuracy_score(eval_y_true, eval_y_pred), f1_score(eval_y_true, eval_y_pred, average='macro')
     
     @classmethod
-    def plot_grid_search(cls, df:dict, title:str, column:str, sci_format:bool):
+    def plot_grid_search(cls, df:dict, title:str, column:str, sci_format:bool, log_xscale=False):
         # Create the plot
         df = pd.DataFrame(df)
         ax = df.plot(x=column, y=['test_acc', 'test_f1'], marker='o', linestyle='-')
@@ -230,9 +230,10 @@ class Engine:
         # x-format
         if sci_format:
             plt.xticks(df[column], [f'{val:.0e}' for val in df[column]], ha='center')
-            plt.xscale('log')
         else:
             plt.xticks(df[column], [val for val in df[column]], ha='center')
+        if log_xscale:
+            plt.xscale('log')
 
         plt.minorticks_off()
         plt.title(title)
