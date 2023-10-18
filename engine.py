@@ -240,3 +240,9 @@ class Engine:
         plt.xlabel(column)
         plt.ylabel('Score')
         plt.show()
+
+    def save_best_model(self):
+        model_path = os.path.join(self.output_dir, 'model')
+        self.model.load_state_dict(self.best_model_state)
+        self.model.save_pretrained(model_path)
+        
