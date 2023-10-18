@@ -1,0 +1,20 @@
+Train Metrics:
+Epoch    Train Loss      Val Loss        Val Accuracy    F1             
+1        0.0853          0.6082          0.7484          0.7161         
+2        0.0600          0.4755          0.8359          0.7608         
+3        0.0449          0.4224          0.8206          0.7645         
+4        0.0340          0.5048          0.8578          0.8023         
+5        0.0190          0.5972          0.6433          0.6309         
+6        0.0140          0.4132          0.8249          0.7740         
+7        0.0138          0.4277          0.8118          0.7324         
+Classification Report:
+              precision    recall  f1-score   support
+
+       bknow       0.77      0.66      0.71        67
+      struct       0.88      0.93      0.91       189
+
+    accuracy                           0.86       256
+   macro avg       0.83      0.79      0.81       256
+weighted avg       0.85      0.86      0.86       256
+
+
