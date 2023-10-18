@@ -1,4 +1,4 @@
-from datasets import load_dataset, DatasetDict
+from datasets import load_dataset, DatasetDict, Dataset
 from transformers import AutoTokenizer, DataCollatorWithPadding, set_seed
 from torch.utils.data import DataLoader
 
@@ -68,3 +68,34 @@ class ClimateDataset:
         self.train_dataloader = DataLoader(self.dataset_encoded["train"], batch_size=self.batch_size, collate_fn=self.data_collator)
         self.eval_dataloader = DataLoader(self.dataset_encoded["val"], batch_size=self.batch_size, collate_fn=self.data_collator)
         self.test_dataloader = DataLoader(self.dataset_encoded["test"], batch_size=self.batch_size, collate_fn=self.data_collator)
+
+
+class Preprocess:
+
+    def __init__(self, df, model_checkpoint, batch_size):
+
+        self.model_checkpoint = model_checkpoint
+        self.batch_size = batch_size
+        self.dataset = Dataset.from_pandas(df)
+
+        if any(k in self.model_checkpoint for k in ("gpt", "opt", "bloom")):
+            padding_side = "left"
+        else:
+            padding_side = "right"
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_checkpoint, padding_side=padding_side)
+        if getattr(self.tokenizer, "pad_token_id") is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+
+    def preprocess_data(self, batch):
+        tokenized_batch = self.tokenizer(batch["text"], padding=True, truncation=True)
+        return tokenized_batch
+    
+    def setup_dataloader(self):
+        self.dataset_encoded = self.dataset.map(self.preprocess_data, batched=True, batch_size=None)
+        columns_to_exclude = ['input_ids', 'token_type_ids', 'attention_mask']
+        remaining_columns = [col for col in self.dataset_encoded.column_names if col not in columns_to_exclude]
+        self.dataset_encoded = self.dataset_encoded.remove_columns(remaining_columns)
+        self.dataset_encoded.set_format("torch")
+        self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
+        self.dataloader = DataLoader(self.dataset_encoded, batch_size=self.batch_size, collate_fn=self.data_collator)
