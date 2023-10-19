@@ -118,7 +118,7 @@ class Engine:
 
         return eval_batch_loss, y_true, y_pred
     
-    def train(self, training_loader, validation_loader, focalloss, early_stop, accumulation_steps):
+    def train(self, training_loader, validation_loader, test_loader, focalloss, early_stop, accumulation_steps, is_quantized):
         best_score = 0.0
         no_improvement_count = 0  # Initialize a counter for early stopping
         for epoch in range(self.epochs):
@@ -133,14 +133,20 @@ class Engine:
                                              'True_labels': y_true,
                                              'Pred_labels': y_pred}
             
+            if is_quantized:
+                _, y_true, y_pred = self.evaluate(test_loader)
+                self.train_metrics[epoch + 1]['Test Accuracy'] = accuracy_score(y_true, y_pred)
+                self.train_metrics[epoch + 1]['Test F1'] = f1_score(y_true, y_pred, average='macro')
+            
             if self.train_metrics[epoch + 1]['F1'] > best_score:
                 best_score = self.train_metrics[epoch + 1]['F1']
                 self.best_model_state = copy.deepcopy(self.model.state_dict())
                 no_improvement_count = 0  # Reset the no improvement count
+                best_epoch = epoch + 1
             else:
                 no_improvement_count += 1  # Increment the no improvement count
             
-            print(f"{epoch + 1} / {self.epochs}:", '\t'.join(f'{k}:\t{v:.4f}' for k, v in self.train_metrics[epoch + 1].items() if k not in ['True_labels', 'Pred_labels']))
+            print(f"{epoch + 1} / {self.epochs}:", '\t'.join(f'{k}:\t{v:.4f}' for k, v in self.train_metrics[epoch + 1].items() if k not in ['True_labels', 'Pred_labels'])+ (" *" if epoch + 1 == best_epoch else ""))
             
             # Check for early stopping
             if no_improvement_count >= early_stop:
@@ -200,18 +206,21 @@ class Engine:
 
         self.train(training_loader=kwargs['train_dataloader'],
                     validation_loader=kwargs['eval_dataloader'],
+                    test_loader=kwargs['test_dataloader'],
                     focalloss=focalloss,
                     early_stop=early_stop,
-                    accumulation_steps=accumulation_steps)
+                    accumulation_steps=accumulation_steps,
+                    is_quantized=is_quantized)
         
-        _, eval_y_true, eval_y_pred = self.evaluate(dataloader=kwargs['eval_dataloader'], eval_on_best_model=True, is_quantized=is_quantized)
-        print('best (higgest macro f1-score) val results:')
-        print(classification_report(y_true=eval_y_true, y_pred=eval_y_pred, target_names=self.labels, zero_division=0.0))
-        _, test_y_true, test_y_pred = self.evaluate(dataloader=kwargs['test_dataloader'], eval_on_best_model=True, is_quantized=is_quantized)
-        print('test results:')
-        print(classification_report(y_true=test_y_true, y_pred=test_y_pred, target_names=self.labels, zero_division=0.0))
-        self.create_report(test_y_true, test_y_pred)
-        return accuracy_score(test_y_true, test_y_pred), f1_score(test_y_true, test_y_pred, average='macro'), accuracy_score(eval_y_true, eval_y_pred), f1_score(eval_y_true, eval_y_pred, average='macro')
+        if not is_quantized:
+            _, eval_y_true, eval_y_pred = self.evaluate(dataloader=kwargs['eval_dataloader'], eval_on_best_model=True, is_quantized=is_quantized)
+            print('best (higgest macro f1-score) val results:')
+            print(classification_report(y_true=eval_y_true, y_pred=eval_y_pred, target_names=self.labels, zero_division=0.0))
+            _, test_y_true, test_y_pred = self.evaluate(dataloader=kwargs['test_dataloader'], eval_on_best_model=True, is_quantized=is_quantized)
+            print('test results:')
+            print(classification_report(y_true=test_y_true, y_pred=test_y_pred, target_names=self.labels, zero_division=0.0))
+            self.create_report(test_y_true, test_y_pred)
+            return accuracy_score(test_y_true, test_y_pred), f1_score(test_y_true, test_y_pred, average='macro'), accuracy_score(eval_y_true, eval_y_pred), f1_score(eval_y_true, eval_y_pred, average='macro')
     
     @classmethod
     def plot_grid_search(cls, df:dict, title:str, column:str, sci_format:bool, log_xscale=False):
