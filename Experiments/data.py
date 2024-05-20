@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 
 class ClimateDataset:
 
-    def __init__(self, model_to_train, model_checkpoint, batch_size, dataset_url = "https://raw.githubusercontent.com/fzanart/FliccClasf/main/", seed=42):
+    def __init__(self, model_to_train, model_checkpoint, batch_size, dataset_url = "https://raw.githubusercontent.com/fzanart/FLICC/main/", seed=42):
         set_seed(seed)
         # map_labels = None, # map labels to a different scenario -> pass a list of desired labels,
         # filter_labels = False, # exclude labels from dataset if they are not in labelmap
